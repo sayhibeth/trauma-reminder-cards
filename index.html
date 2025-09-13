@@ -1,229 +1,382 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<title>Trauma Reminder Cards</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Card Endorsement Game</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
+  :root { --card-w: 576px; --card-h: 432px; }
   body {
-    font-family: Arial, Helvetica, sans-serif;
-    background:#f5f5f5;
-    display:flex; flex-direction:column; align-items:center; padding:20px;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+    background:#f6f7f9; color:#222; margin:0; padding:18px;
+    display:flex; flex-direction:column; align-items:center;
   }
-  h1 { margin-bottom:30px; }
 
-  .cards {
-    display:flex; flex-wrap:wrap; justify-content:center;
-    gap:40px 60px;
-    max-width:1200px; width:100%;
-  }
-  .card {
-    width:240px; height:160px; /* bigger cards */
-    perspective:1000px; cursor:pointer; position:relative;
-    transition: transform .3s ease, box-shadow .3s ease;
-  }
-  .card:hover:not(.answeredCard) {
-    transform: translateY(-6px);
-    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
-  }
-  .inner {
-    position:relative; width:100%; height:100%;
-    transition:transform .6s ease; transform-style:preserve-3d;
-  }
-  .flipped .inner { transform:rotateY(180deg); }
-  
-  .front, .back {
-    position:absolute; width:100%; height:100%; backface-visibility:hidden;
-    border-radius:12px; box-shadow:0 6px 12px rgba(0,0,0,0.2);
-    display:flex; align-items:center; justify-content:center;
+  #cardAreaWrap { width:100%; max-width:var(--card-w); margin-bottom:18px; }
+  #cardArea { width:var(--card-w); height:var(--card-h); position:relative; }
+  .card-surface {
+    position:absolute; inset:0;
+    border-radius:20px;
     overflow:hidden;
+    box-shadow:0 12px 28px rgba(8,12,20,0.08);
+    background:#fff; display:flex; align-items:center; justify-content:center;
   }
-  .back { 
-    background-image: url("https://static.wixstatic.com/media/b668a8_b474fb9b05d7447ca0bc2378826bd56b~mv2.png");
-    background-size: cover;
-    background-position: center;
-  }
-  .front {
-    background:white; color:#222;
-    transform:rotateY(180deg);
-  }
-  .frontLabel {
-    position:absolute; bottom:8px; left:8px; right:8px;
-    font-size:20px; font-weight:bold;
-    background: rgba(255,255,255,0.8);
-    padding:4px;
-    border-radius:4px;
-    text-align:center;
+  .card-surface img { width:100%; height:100%; object-fit:contain; border-radius:20px; }
+
+  #finalMessage {
+    display:none; width:100%; height:100%;
+    align-items:center; justify-content:center; text-align:center;
+    font-size:28px; font-weight:800; color:#0f766e; padding:24px;
   }
 
-  .activeCard { 
-    box-shadow:0 0 15px 4px #FFD600 !important; 
-    border-radius:12px; 
+  .controls { margin-top:14px; display:flex; flex-direction:column; align-items:center; gap:12px; }
+  .main-buttons { display:flex; gap:20px; justify-content:center; }
+  .btn-yes, .btn-no {
+    padding:16px 28px; font-size:20px; font-weight:800;
+    border-radius:12px; border:0; cursor:pointer; min-width:140px;
   }
-  .card.answeredCard { 
-    opacity: 0.5;             /* darker */
-    filter: grayscale(80%);   /* more muted */
-    transition: opacity .3s ease, filter .3s ease;
+  .btn-yes { background:#16a34a; color:#fff; }
+  .btn-no  { background:#e11d48; color:#fff; }
+  .secondary-buttons { display:flex; gap:12px; justify-content:center; }
+  .btn-back, .btn-restart {
+    padding:6px 12px; font-size:13px; font-weight:600;
+    border-radius:8px; border:0; cursor:pointer;
   }
-  .card.answeredCard::after {
-    content: "✔"; 
-    position: absolute; 
-    top: 6px; 
-    right: 10px;
-    font-size: 22px; 
-    font-weight: bold; 
-    color: #28a745; 
-    text-shadow: 0 0 6px white, 0 0 3px white; /* stronger glow */
+  .btn-back { background:#0f766e; color:#fff; }
+  .btn-restart { background:#64748b; color:#fff; }
+  .btn-start { background:#0ea5e9; color:#fff; padding:12px 18px; border-radius:10px; font-size:16px; font-weight:700; }
+
+  .progress { font-size:12px; color:#555; margin-top:4px; }
+
+  #review { margin-top:18px; width:100%; max-width:860px; text-align:center; }
+  #review .counts { display:none; }
+  #footerControls { margin-top:12px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+  #downloadBtn { background:#0ea5e9; color:#fff; padding:8px 12px; border-radius:8px; font-weight:700; font-size:13px; }
+  #downloadBtn:disabled { opacity:.5; cursor:not-allowed; background:#7dd3fc; }
+
+  /* Overlay */
+  .overlay {
+    position: fixed; inset: 0; z-index: 1000;
+    display:flex; align-items:center; justify-content:center;
+    padding: 16px;
+    background: rgba(0,0,0,0.58);
+    backdrop-filter: blur(2px);
+    opacity: 0; pointer-events: none;
+    transition: opacity 650ms ease;
+  }
+  .overlay.show { opacity: 1; pointer-events: auto; }
+  .modal { background: transparent; display:flex; flex-direction:column; align-items:center; }
+
+  .scale-box { position:relative; max-width:620px; width:100%; }
+  .scale-img { width:100%; display:block; border-radius:12px; }
+  .scale-svg { position:absolute; inset:0; width:100%; height:100%; }
+
+  .note-wrap { width:100%; max-width:620px; margin-top:10px; }
+  .note-label { font-size: 13px; color:#e2e8f0; margin-bottom: 6px; line-height:1.35; }
+  .note-input {
+    width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(226,232,240,0.65);
+    background: rgba(15,23,42,0.35); color:#e5e7eb;
   }
 
-  .overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5);
-    display:flex; align-items:center; justify-content:center; z-index:50; }
-  .overlayContent { position: relative; display:flex; flex-direction:column; align-items:center; width:100%; max-width:700px; }
-  .overlay .card { width:500px; height:320px; /* larger overlay card */
-    box-shadow:0 12px 24px rgba(0,0,0,.5); margin-bottom:20px; border-radius:12px; overflow:hidden; }
+  .modal-footer { margin-top:14px; display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .btn-primary { background:#0ea5e9; color:#fff; padding:14px 26px; font-size:18px; font-weight:700; border-radius:12px; }
+  .btn-secondary { background:rgba(226,232,240,0.2); color:#e2e8f0; padding:8px 14px; font-size:13px; border-radius:8px; }
 
-  .closeBtn {
-    position:absolute; top:-10px; right:-10px; background:#fff;
-    border:2px solid #444; border-radius:50%; width:30px; height:30px;
-    display:flex; align-items:center; justify-content:center; font-weight:bold;
-    cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.3);
-  }
-  .closeBtn:hover { background:#FFD600; }
-
-  .bubble {
-    display:inline-flex; flex-direction:column; align-items:center; justify-content:center;
-    text-align:center; background:white; border-radius:14px;
-    box-shadow:0 6px 20px rgba(0,0,0,.3); padding:14px 18px;
-    max-width:520px; width:auto;
-  }
-  .bubble p { margin:0 0 8px; font-size:16px; font-weight:bold; }
-  .bubble textarea {
-    width:400px; height:70px; margin-bottom:8px; font-size:16px; padding:8px;
-    border-radius:6px; border:2px solid #bbb; resize:none;
-  }
-  .bubble textarea.flat {
-    height:28px; /* one-line "Why" box */
-  }
-  .bubble button {
-    background:#FFD600; color:#000; border:none; border-radius:20px;
-    padding:6px 14px; font-size:14px; font-weight:bold; cursor:pointer;
-  }
-  .bubble button:hover { background:#FFC400; transform:scale(1.05); }
-
-  #finishBtn { margin-top:40px; padding:14px 28px; font-size:18px;
-    background:#222; color:white; border:none; border-radius:8px; cursor:pointer; }
+  .wedge { fill: transparent; cursor:pointer; }
+  .wedge.selected { fill-opacity:0.55; }
 </style>
 </head>
 <body>
 
-<h1>Trauma Reminder Cards</h1>
-<div class="cards" id="cardContainer"></div>
-<button id="finishBtn">Finish & Download PDF</button>
+<div id="cardAreaWrap">
+  <div id="cardArea">
+    <div class="card-surface">
+      <img id="cardImg" src="" alt="">
+      <div id="finalMessage">All done! 😊</div>
+    </div>
+  </div>
+
+  <div class="controls" id="startControls">
+    <button id="startBtn" class="btn-start">START</button>
+  </div>
+
+  <div class="controls" id="gameControls" style="display:none;">
+    <div class="main-buttons">
+      <button id="yesBtn" class="btn-yes">YES</button>
+      <button id="noBtn" class="btn-no">NO</button>
+    </div>
+    <div class="secondary-buttons">
+      <button id="backBtn" class="btn-back" disabled>Back</button>
+      <button id="restartBtn" class="btn-restart">Restart</button>
+    </div>
+  </div>
+
+  <div class="progress" id="progressText"></div>
+</div>
+
+<div id="review">
+  <div class="counts" id="countPills"></div>
+  <div id="footerControls">
+    <button id="downloadBtn" class="btn" disabled>Download YES List (PDF)</button>
+  </div>
+</div>
+
+<!-- Rating Overlay -->
+<div id="ratingOverlay" class="overlay">
+  <div class="modal">
+    <div class="scale-box">
+      <img class="scale-img" id="scaleImg"
+           src="https://static.wixstatic.com/media/b668a8_cc7af2c5084d4a029a2c5446340f87fd~mv2.png"
+           alt="Helpfulness/Harmfulness Gauge" />
+      <svg class="scale-svg" id="scaleSvg" viewBox="0 0 1000 520"></svg>
+    </div>
+
+    <div class="note-wrap">
+      <div class="note-label">
+        Is this coping strategy harmful? Does anyone have a problem with you using this coping strategy or does it get you into trouble?
+      </div>
+      <input id="noteInput" class="note-input" type="text" maxlength="220" placeholder="Write a brief note..." />
+    </div>
+
+    <div class="modal-footer">
+      <button id="saveRatingBtn" class="btn btn-primary" type="button">Enter</button>
+      <button id="cancelRatingBtn" class="btn btn-secondary" type="button">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <script>
-const { jsPDF } = window.jspdf;
+/* ---------- All Categories and Cards ---------- */
+const categories = {
+  "Avoidance/Denial": {
+    cover:"https://static.wixstatic.com/media/b668a8_3abbbcf111794484be03336180d81c10~mv2.png",
+    cards:[
+      { title:"Avoiding Sleep", image:"https://static.wixstatic.com/media/b668a8_3866d12b302d4403907bbba023101f9d~mv2.png" },
+      { title:"avoiding certain situations or places", image:"https://static.wixstatic.com/media/b668a8_c3f5a0c17d4f483cb2b26343e88e4d3a~mv2.png" },
+      { title:"Avoiding getting close to people", image:"https://static.wixstatic.com/media/b668a8_6b47f54a27aa42349a311290cca856dd~mv2.jpg" },
+      { title:"Avoiding thinking about it", image:"https://static.wixstatic.com/media/b668a8_c814356b15ac495db501c8d4720cddbf~mv2.png" },
+      { title:"Avoiding talking about it", image:"https://static.wixstatic.com/media/b668a8_11024a0da25a40a8be5f5208d3ffc5a0~mv2.png" },
+      { title:"Pretending it did not happen", image:"https://static.wixstatic.com/media/b668a8_824cf645c57b42d7a4ccc7ba04725c58~mv2.png" },
+      { title:"Telling others you are OK", image:"https://static.wixstatic.com/media/b668a8_2b2e505ac9cd4723970b1434a0d8f319~mv2.png" },
+      { title:"Telling yourself that what happened wasn't a big deal, or wasn't that bad.", image:"https://static.wixstatic.com/media/b668a8_dd86211a2b6b4eb5aafa920408117e59~mv2.png" }
+    ]
+  },
+  "Numbing/Escaping": {
+    cover:"https://static.wixstatic.com/media/b668a8_3abbbcf111794484be03336180d81c10~mv2.png",
+    cards:[
+      { title:"Zoning out", image:"https://static.wixstatic.com/media/b668a8_57a5e6ed45df4edc90f9f462ba3aa9f9~mv2.png" },
+      { title:"Staying away from home", image:"https://static.wixstatic.com/media/b668a8_77bba77132ed4694aae2b9bd5c792c7d~mv2.png" },
+      { title:"Sleeping a lot", image:"https://static.wixstatic.com/media/b668a8_808493fe8de9441696189efd9ceb90ec~mv2.png" },
+      { title:"Shutting down", image:"https://static.wixstatic.com/media/b668a8_1049df005cca489198fc5e1a060acaf3~mv2.png" },
+      { title:"Eating more than you need or eating lots of unhealthy foods", image:"https://static.wixstatic.com/media/b668a8_765209eda944407a81596897a0b03e50~mv2.png" },
+      { title:"Using drugs, alcohol, or nicotine", image:"https://static.wixstatic.com/media/b668a8_ee7d8c6497fa40ffaaf283d1fe68915f~mv2.png" }
+    ]
+  },
+  "Emotional/Physical Release and/or Processing": {
+    cover:"https://static.wixstatic.com/media/b668a8_3abbbcf111794484be03336180d81c10~mv2.png",
+    cards:[
+      { title:"Writing poetry, journaling your thoughts and feelings, or writing stories", image:"https://static.wixstatic.com/media/b668a8_0ca939dc5b3a47e89537a91fc05c4bd1~mv2.png" },
+      { title:"Singing or writing songs", image:"https://static.wixstatic.com/media/b668a8_491e7d47f0164abfaa99370e48449b0c~mv2.png" },
+      { title:"Outbursts of emotion or anger", image:"https://static.wixstatic.com/media/b668a8_a81871bc32464487bf432784ea724699~mv2.png" },
+      { title:"Making art, drawing, or crafting", image:"https://static.wixstatic.com/media/b668a8_20cff2953bdd43be8e1bf28aa4987f66~mv2.png" },
+      { title:"Dancing", image:"https://static.wixstatic.com/media/b668a8_d2b746c1c430443183f38bc89cfd1e9d~mv2.png" },
+      { title:"Crying", image:"https://static.wixstatic.com/media/b668a8_9a9af3724bd94c64a2efb07e471e4401~mv2.png" }
+    ]
+  },
+  "Support Seeking/Self Care": {
+    cover:"https://static.wixstatic.com/media/b668a8_3abbbcf111794484be03336180d81c10~mv2.png",
+    cards:[
+      { title:"Spending time at a park or outside in nature", image:"https://static.wixstatic.com/media/b668a8_74f8a3d3a4d748ffa82a445c1eb1dad4~mv2.png" },
+      { title:"Talking to people who are supportive and care", image:"https://static.wixstatic.com/media/b668a8_097987bcb55045f6a7c635136ef2f715~mv2.png" },
+      { title:"Spending time with people who have also been through hard things", image:"https://static.wixstatic.com/media/b668a8_49a27eef1e7e473fbb788f5a0a1bbe5d~mv2.png" },
+      { title:"Doing relaxation activities", image:"https://static.wixstatic.com/media/b668a8_7d5d3c18ad2549219c2d382843a06743~mv2.png" },
+      { title:"Praying or engaging in religious activities", image:"https://static.wixstatic.com/media/b668a8_f35a16543fb742b3a55e22fd00a849ff~mv2.png" },
+      { title:"Using positive self-talk or thought stopping", image:"https://static.wixstatic.com/media/b668a8_e9b95b5809694c76bb6360c3a005d55a~mv2.png" },
+      { title:"Listening to or making music", image:"https://static.wixstatic.com/media/b668a8_27f1f53a89564cfeaa4a9bf1ee8e07fe~mv2.png" },
+      { title:"Using humor or laughter", image:"https://static.wixstatic.com/media/b668a8_99057e0e20de4340bb7d28a35027c89e~mv2.png" },
+      { title:"Finding hobbies, activities, or behaviors that give you a feeling of control", image:"https://static.wixstatic.com/media/b668a8_520f038f1c894f2c8c9f415364bc8c07~mv2.png" },
+      { title:"Asking someone for help", image:"https://static.wixstatic.com/media/b668a8_2efca7b205bf417e848e4aa8310a2b1b~mv2.png" }
+    ]
+  },
+  "Reenacting": {
+    cover:"https://static.wixstatic.com/media/b668a8_3abbbcf111794484be03336180d81c10~mv2.png",
+    cards:[
+      { title:"Play fighting or play wrestling", image:"https://static.wixstatic.com/media/b668a8_c23730bf3eae4665b62dd1ad8673633f~mv2.png" },
+      { title:"Hurting your body", image:"https://static.wixstatic.com/media/b668a8_eb55dd1be4174d008e52ddbb5f4b09d8~mv2.png" },
+      { title:"Seeking out or maintaining negative or toxic friendships", image:"https://static.wixstatic.com/media/b668a8_f427f879eecc4a63a3aa5cb4ea2341fa~mv2.png" },
+      { title:"Being mean to yourself or saying everything was your fault", image:"https://static.wixstatic.com/media/b668a8_e960c7c9d0d345449e9df431380a811d~mv2.jpg" },
+      { title:"Acting mean or aggressive to keep people at a distance", image:"https://static.wixstatic.com/media/b668a8_c26e28ec939344f89569d7c32c05cfe1~mv2.jpg" }
+    ]
+  },
+  "Distraction": {
+    cover:"https://static.wixstatic.com/media/b668a8_3abbbcf111794484be03336180d81c10~mv2.png",
+    cards:[
+      { title:"Playing lots of video games", image:"https://static.wixstatic.com/media/b668a8_3b79fc8a09c74bab9dac47705985866f~mv2.png" },
+      { title:"Watching lots of TV", image:"https://static.wixstatic.com/media/b668a8_063f2ef6bd2d4730b8b7351173bdc6ca~mv2.png" },
+      { title:"Spending a lot of time on social media", image:"https://static.wixstatic.com/media/b668a8_d71a6919f6594f0397da6201cdce5b32~mv2.png" }
+    ]
+  },
+  "Sensory/Adrenaline-Seeking": {
+    cover:"https://static.wixstatic.com/media/b668a8_3abbbcf111794484be03336180d81c10~mv2.png",
+    cards:[
+      { title:"Doing things that are risky or unsafe", image:"https://static.wixstatic.com/media/b668a8_ddbde24b146f44018b66d50321d12da0~mv2.png" },
+      { title:"Seeking out or maintaining high stress relationships", image:"https://static.wixstatic.com/media/b668a8_f78aa0a333eb49798b18e339ef75eb00~mv2.png" },
+      { title:"Starting arguments or fights", image:"https://static.wixstatic.com/media/b668a8_389eaf0fea1f459a9f2ed9d465380124~mv2.png" },
+      { title:"Seeking out or maintaining high drama relationships", image:"https://static.wixstatic.com/media/b668a8_e48c2f75bc014193a2320e671b3f2764~mv2.png" }
+    ]
+  }
+};
 
-const cardData = [
-  { category: "Card 1", frontImage: "https://static.wixstatic.com/media/b668a8_8ca1e0d3d11b49acaa2e4cba9876005b~mv2.png", prompt: "List some noises or sounds that remind you of the trauma." },
-  { category: "Card 2", frontImage: "https://static.wixstatic.com/media/b668a8_4d535fe994824f9eb39ce3ca24709b48~mv2.png", prompt: "List some smells that remind you of the trauma" },
-  { category: "Card 3", frontImage: "https://static.wixstatic.com/media/b668a8_4897f6ccb8d54f3ebfa30b4d1ea8cb49~mv2.png", prompt: "List some things you see that remind you of the trauma" },
-  { category: "Card 4", frontImage: "https://static.wixstatic.com/media/b668a8_8ccdd3eed937498bbb84ce1e791cd97f~mv2.png", prompt: "List some thinks you feel with your hands or body that remind you of the trauma." },
-  { category: "Card 5", frontImage: "https://static.wixstatic.com/media/b668a8_8004623ff2bc4322838c426d0d0903da~mv2.png", prompt: "List some feelings that you experience that remind you of the trauma?" },
-  { category: "Card 6", frontImage: "https://static.wixstatic.com/media/b668a8_c2857813302246a592d15b9398ae3d1e~mv2.png", prompt: "List some tastes or flavors that remind you of the trauma" },
-  { category: "Card 7", frontImage: "https://static.wixstatic.com/media/b668a8_c2857813302246a592d15b9398ae3d1e~mv2.png", prompt: "List some changes that have happened because of the trauma?" }
-];
+/* ---------- Deck ---------- */
+function buildOrderedDeck(){
+  const desired=["Emotional/Physical Release and/or Processing","Support Seeking/Self Care","Numbing/Escaping","Avoidance/Denial"];
+  const all=Object.keys(categories);
+  const rest=all.filter(c=>!desired.includes(c));
+  const order=[...desired,...rest];
+  const d=[{title:"Intro",category:"Intro",image:categories[desired[0]].cover,isIntro:true}];
+  order.forEach(cat=>{ const c=categories[cat]; if(!c)return; c.cards.forEach(card=>d.push({...card,category:cat,cover:c.cover})); });
+  return d;
+}
+let deck=buildOrderedDeck();
 
-const container = document.getElementById("cardContainer");
+/* ---------- State ---------- */
+let idx=0, started=false, uidSeq=0;
+const yesPicks=[];
 
-cardData.forEach((c, i) => {
-  const hidden = document.createElement("textarea"); hidden.style.display = "none"; hidden.setAttribute("data-idx", i); document.body.appendChild(hidden);
-  const hiddenWhy = document.createElement("textarea"); hiddenWhy.style.display = "none"; hiddenWhy.setAttribute("data-why-idx", i); document.body.appendChild(hiddenWhy);
+/* ---------- Elements ---------- */
+const cardImg=document.getElementById('cardImg');
+const finalMessage=document.getElementById('finalMessage');
+const progressText=document.getElementById('progressText');
+const startControls=document.getElementById('startControls');
+const startBtn=document.getElementById('startBtn');
+const gameControls=document.getElementById('gameControls');
+const yesBtn=document.getElementById('yesBtn');
+const noBtn=document.getElementById('noBtn');
+const backBtn=document.getElementById('backBtn');
+const restartBtn=document.getElementById('restartBtn');
+const downloadBtn=document.getElementById('downloadBtn');
+const ratingOverlay=document.getElementById('ratingOverlay');
+const scaleImg=document.getElementById('scaleImg');
+const scaleSvg=document.getElementById('scaleSvg');
+const noteInput=document.getElementById('noteInput');
+const saveRatingBtn=document.getElementById('saveRatingBtn');
+const cancelRatingBtn=document.getElementById('cancelRatingBtn');
 
-  const cardEl = document.createElement("div");
-  cardEl.className = "card";
-  cardEl.innerHTML = `
-    <div class="inner">
-      <div class="back"></div>
-      <div class="front">
-        <img src="${c.frontImage}" alt="${c.category}" style="width:100%; height:100%; object-fit:cover;">
-        <div class="frontLabel">${c.category}</div>
-      </div>
-    </div>
-  `;
-  cardEl.addEventListener("click", () => openOverlay(cardEl, c, i));
-  container.appendChild(cardEl);
-});
+/* ---------- Labels/Colors ---------- */
+const ratingLabels={1:"Extremely Harmful",2:"Pretty Harmful",3:"A Little Harmful",4:"Neutral",5:"A Little Helpful",6:"Pretty Helpful",7:"Extremely Helpful"};
+const ratingColors={1:"#dc2626",2:"#f97316",3:"#eab308",4:"#94a3b8",5:"#84cc16",6:"#22c55e",7:"#16a34a"};
+let selectedRating=null, selectedWedgeEl=null;
 
-function openOverlay(cardEl, card, idx) {
-  cardEl.classList.add("activeCard");
-  const overlay = document.createElement("div");
-  overlay.className = "overlay";
-  overlay.innerHTML = `
-    <div class="overlayContent">
-      <div class="closeBtn">✕</div>
-      <div class="card">
-        <img src="${card.frontImage}" alt="${card.category}" style="width:100%; height:100%; object-fit:cover;">
-      </div>
-      <div class="bubble">
-        <p>${card.prompt}</p>
-        <textarea data-idx="${idx}"></textarea>
-        <p>Why is it a reminder?</p>
-        <textarea class="flat" data-why-idx="${idx}"></textarea>
-        <button class="enterBtn">Enter</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(overlay);
-
-  const textarea = overlay.querySelector('textarea[data-idx="'+idx+'"]');
-  const textareaWhy = overlay.querySelector('textarea[data-why-idx="'+idx+'"]');
-  const original = document.querySelector('textarea[data-idx="'+idx+'"]');
-  const originalWhy = document.querySelector('textarea[data-why-idx="'+idx+'"]');
-
-  textarea.value = original.value;
-  textareaWhy.value = originalWhy.value;
-
-  overlay.querySelector(".enterBtn").addEventListener("click", () => {
-    original.value = textarea.value;
-    originalWhy.value = textareaWhy.value;
-    overlay.remove();
-    cardEl.classList.remove("activeCard");
-    if (textarea.value.trim() !== "" || textareaWhy.value.trim() !== "") {
-      cardEl.classList.add("answeredCard");
-    } else {
-      cardEl.classList.remove("answeredCard");
-    }
-  });
-  overlay.querySelector(".closeBtn").addEventListener("click", () => {
-    overlay.remove();
-    cardEl.classList.remove("activeCard");
-  });
+/* ---------- Render ---------- */
+function presentCard(){
+  if(idx>=deck.length){
+    cardImg.style.display="none";
+    finalMessage.style.display="flex";
+    progressText.textContent=`All done! You selected ${yesPicks.length} YES cards.`;
+    return;
+  }
+  const c=deck[idx];
+  if(c.isIntro && !started){
+    startControls.style.display="flex"; gameControls.style.display="none"; progressText.textContent="";
+  } else {
+    startControls.style.display="none"; gameControls.style.display="flex";
+    progressText.textContent=`${idx+1}/${deck.length}`;
+  }
+  finalMessage.style.display="none";
+  cardImg.style.display="block";
+  cardImg.src=c.image;
 }
 
-document.getElementById("finishBtn").addEventListener("click", () => {
-  if (!window.confirm("Are you sure you want to finish and download the PDF?")) return;
+/* ---------- Gauge calibration (clickable wedges) ---------- */
+const CAL = {
+  cyUpPctOfW: 0.06,   // move center up from bottom a bit
+  rOuterPctOfW: 0.49, // outer radius (hugs outer colored band)
+  rInnerPctOfW: 0.34, // inner radius (hugs inner edge)
+  angleStartDeg: 180, // left edge of fan
+  angleEndDeg: 0      // right edge of fan
+};
+function polarToCartesian(cx,cy,r,ang){const rad=Math.PI/180*ang;return {x:cx+r*Math.cos(rad),y:cy-r*Math.sin(rad)};}
+function sectorPath(cx,cy,rO,rI,a1,a2){
+  const p1=polarToCartesian(cx,cy,rO,a1),p2=polarToCartesian(cx,cy,rO,a2),
+        p3=polarToCartesian(cx,cy,rI,a2),p4=polarToCartesian(cx,cy,rI,a1);
+  return `M${p1.x} ${p1.y}A${rO} ${rO} 0 0 0 ${p2.x} ${p2.y}L${p3.x} ${p3.y}A${rI} ${rI} 0 0 1 ${p4.x} ${p4.y}Z`;
+}
+function buildWedgesFromImage(){
+  const W=scaleImg.naturalWidth||1000, H=scaleImg.naturalHeight||520;
+  scaleSvg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  const cx=W/2, cy=H-(W*CAL.cyUpPctOfW);
+  const rO=W*CAL.rOuterPctOfW, rI=W*CAL.rInnerPctOfW;
+  const step=(CAL.angleStartDeg-CAL.angleEndDeg)/7; // 180/7
 
-  const doc = new jsPDF();
-  let y = 20;
-  cardData.forEach((c, idx) => {
-    const ans = document.querySelector('textarea[data-idx="'+idx+'"]').value;
-    const whyAns = document.querySelector('textarea[data-why-idx="'+idx+'"]').value;
+  scaleSvg.innerHTML="";
+  for(let i=0;i<7;i++){
+    const a1=CAL.angleStartDeg - step*i;
+    const a2=CAL.angleStartDeg - step*(i+1);
+    const path=document.createElementNS("http://www.w3.org/2000/svg","path");
+    path.setAttribute("d",sectorPath(cx,cy,rO,rI,a1,a2));
+    path.setAttribute("class","wedge");
+    const color=ratingColors[i+1];
+    path.addEventListener("click",()=>{
+      if(selectedWedgeEl) selectedWedgeEl.style.fill="transparent";
+      selectedWedgeEl=path; selectedRating=i+1;
+      path.style.fill=color+"55";
+    });
+    scaleSvg.appendChild(path);
+  }
+}
 
-    doc.setFontSize(18); doc.setFont("helvetica", "bold");
-    doc.text(c.category, 20, y); y+=12;
+/* ---------- Overlay open/close ---------- */
+function showOverlay(){
+  ratingOverlay.classList.add('show');
+  if(scaleImg.complete) buildWedgesFromImage();
+  else scaleImg.addEventListener('load', buildWedgesFromImage, {once:true});
+}
+function hideOverlay(){
+  ratingOverlay.classList.remove('show');
+  if(selectedWedgeEl) selectedWedgeEl.style.fill='transparent';
+  selectedRating=null; selectedWedgeEl=null; noteInput.value="";
+}
 
-    doc.setFontSize(16); doc.setFont("helvetica", "normal");
-    doc.text("Answer: " + (ans || "(no answer)"), 30, y, {maxWidth:160}); y+=10;
-
-    doc.setFont("helvetica", "italic");
-    doc.text("Why: " + (whyAns || "(no answer)"), 40, y, {maxWidth:150});
-    doc.setFont("helvetica", "normal");
-    y+=28;
-
-    if (y > 270) { doc.addPage(); y = 20; }
+/* ---------- Actions ---------- */
+startBtn.onclick=()=>{ if(deck[idx].isIntro && !started){ idx=1; started=true; presentCard(); } };
+yesBtn.onclick=()=>{ if(idx<deck.length && !deck[idx].isIntro) showOverlay(); };
+noBtn.onclick=()=>{ idx++; presentCard(); };
+backBtn.onclick=()=>{ if(idx>0){ idx--; presentCard(); } };
+restartBtn.onclick=()=>{ deck=buildOrderedDeck(); idx=0; started=false; presentCard(); };
+cancelRatingBtn.onclick=()=>hideOverlay();
+saveRatingBtn.onclick=()=>{
+  if(!selectedRating){ alert("Pick a level"); return; }
+  const c=deck[idx];
+  yesPicks.push({
+    uid: ++uidSeq,
+    title: c.title,
+    category: c.category,
+    rating: selectedRating,
+    ratingLabel: ratingLabels[selectedRating],
+    note: noteInput.value.trim()
   });
-  doc.save("card_game_answers.pdf");
-});
+  hideOverlay(); idx++; presentCard();
+};
+
+/* ---------- PDF ---------- */
+downloadBtn.onclick=()=>{
+  const { jsPDF }=window.jspdf;
+  const doc=new jsPDF({unit:"pt",format:"letter"});
+  let y=40;
+  doc.setFontSize(18); doc.text("YES Endorsed Cards (with Ratings & Notes)",40,y); y+=28;
+  yesPicks.forEach(p=>{
+    const text=`- ${p.title} (${p.category}) — Rating: ${p.rating} (${p.ratingLabel})${p.note?"; Note: "+p.note:""}`;
+    const lines=doc.splitTextToSize(text,520);
+    lines.forEach(ln=>{ doc.text(ln,40,y); y+=16; });
+    y+=4;
+    if(y>760){ doc.addPage(); y=40; }
+  });
+  doc.save("endorsed_cards_with_ratings.pdf");
+};
+
+/* ---------- Init ---------- */
+presentCard();
 </script>
 </body>
 </html>
